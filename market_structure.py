@@ -30,10 +30,12 @@ analisis = st.sidebar.button("🔍 ANALISIS SEKARANG", type="primary", use_conta
 def ambil_data(ticker, period):
     if not ticker.endswith(".JK"):
         ticker += ".JK"
-    return yf.download(ticker, period=period, interval="1d", progress=False)
+    return yf.download(ticker, period=period, interval="1d", progress=False, auto_adjust=True)
 
 def hitung_structure(df, order=6):
     df = df.copy()
+    
+    # Deteksi Swing
     df['is_SH'] = df['High'] == df['High'].rolling(order*2+1, center=True).max()
     df['is_SL'] = df['Low']  == df['Low'].rolling(order*2+1, center=True).min()
     
@@ -45,7 +47,7 @@ def hitung_structure(df, order=6):
     
     return df
 
-# ================== MAIN ANALISIS ==================
+# ================== MAIN ==================
 if analisis and ticker_input:
     try:
         with st.spinner(f"Mengambil data {ticker_input}..."):
@@ -58,14 +60,16 @@ if analisis and ticker_input:
             with col1:
                 st.metric("Harga Saat Ini", f"Rp {latest['Close']:,.0f}")
             with col2:
-                trend = "🟢 BULLISH" if latest['Last_SH'] >= df['Last_SH'].shift(1).iloc[-1] else "🔴 BEARISH"
+                # Perbaikan error alignment
+                prev_last_sh = df['Last_SH'].iloc[-2] if len(df) > 1 else latest['Last_SH']
+                trend = "🟢 BULLISH" if latest['Last_SH'] >= prev_last_sh else "🔴 BEARISH"
                 st.metric("Struktur Saat Ini", trend)
             with col3:
                 st.metric("Last Higher Low", f"Rp {latest['Last_SL']:,.0f}")
             with col4:
                 st.metric("Last Higher High", f"Rp {latest['Last_SH']:,.0f}")
             
-            # ================== SINYAL ENTRY & EXIT ==================
+            # SINYAL ENTRY & EXIT
             st.subheader("🎯 SINYAL ENTRY & EXIT")
             col_a, col_b = st.columns(2)
             
@@ -75,16 +79,16 @@ if analisis and ticker_input:
                     if latest['Close'] <= latest['Last_SL'] * 1.04:
                         st.success("✅ **ENTRY BAGUS SEKARANG**\nHarga dekat Higher Low")
                     else:
-                        st.info("🟡 Tunggu pullback ke Higher Low untuk entry lebih baik")
+                        st.info("🟡 Tunggu pullback ke Higher Low")
                 else:
-                    st.warning("❌ Hindari entry baru (Struktur Bearish)")
+                    st.warning("❌ Hindari entry (Struktur Bearish)")
             
             with col_b:
                 st.markdown("**🔴 EXIT / JUAL**")
                 if latest['CHoCH_Bearish']:
-                    st.error("🚨 **JUAL / KELUAR SEKARANG**\nCHoCH Bearish terdeteksi!")
+                    st.error("🚨 **JUAL / KELUAR SEKARANG**\nCHoCH Bearish!")
                 else:
-                    st.success("✅ Hold selama struktur masih Bullish")
+                    st.success("✅ Hold selama struktur Bullish")
             
             # Chart
             st.subheader(f"📈 Chart Market Structure - {ticker_input}")
@@ -101,7 +105,7 @@ if analisis and ticker_input:
                               title=f"{ticker_input} - Market Structure ({periode})")
             st.plotly_chart(fig, use_container_width=True)
             
-            # Tabel Ringkasan
+            # Tabel
             st.subheader("📋 Data 10 Hari Terakhir")
             st.dataframe(df[['Close', 'Last_SH', 'Last_SL', 'Bull_BOS', 'CHoCH_Bearish']].tail(10), 
                         use_container_width=True)
@@ -109,4 +113,4 @@ if analisis and ticker_input:
     except Exception as e:
         st.error(f"Terjadi kesalahan: {str(e)}")
 
-st.caption("Data dari Yahoo Finance • Market Structure adalah alat bantu teknikal • Selalu gunakan money management")
+st.caption("Data dari Yahoo Finance • Market Structure adalah alat bantu • Gunakan dengan manajemen risiko")
