@@ -10,12 +10,11 @@ st.markdown("**Entry Beli & Exit Jual Optimal berdasarkan Higher High - Higher L
 # ================== SIDEBAR ==================
 st.sidebar.header("⚙️ Pengaturan")
 
-# Input Emiten
 ticker_input = st.sidebar.text_input("Kode Emiten (contoh: BBCA.JK)", value="BBCA.JK").upper().strip()
 
 st.sidebar.subheader("📌 Watchlist Populer")
 watchlist = ["BBCA.JK", "BBRI.JK", "BMRI.JK", "TLKM.JK", "GOTO.JK", "ASII.JK", 
-             "ADRO.JK", "UNVR.JK", "PTBA.JK", "BBNI.JK", "AMMN.JK", "MDKA.JK"]
+             "ADRO.JK", "UNVR.JK", "PTBA.JK", "BBNI.JK"]
 selected = st.sidebar.selectbox("Pilih dari Watchlist", ["--- Pilih ---"] + watchlist)
 
 if selected != "--- Pilih ---":
@@ -23,11 +22,6 @@ if selected != "--- Pilih ---":
 
 periode = st.sidebar.selectbox("Periode Data", ["1y", "2y", "3y", "5y"], index=1)
 swing_order = st.sidebar.slider("Swing Sensitivity", 4, 12, 6)
-
-# Multi Saham
-st.sidebar.subheader("🔄 Multi Emiten")
-multi_tickers = st.sidebar.multiselect("Pilih beberapa saham untuk dibandingkan", 
-                                       watchlist, default=["BBCA.JK", "BBRI.JK"])
 
 analisis = st.sidebar.button("🔍 ANALISIS SEKARANG", type="primary", use_container_width=True)
 
@@ -41,7 +35,7 @@ def ambil_data(ticker, period):
 def hitung_structure(df, order=6):
     df = df.copy()
     df['is_SH'] = df['High'] == df['High'].rolling(order*2+1, center=True).max()
-    df['is_SL'] = df['Low'] == df['Low'].rolling(order*2+1, center=True).min()
+    df['is_SL'] = df['Low']  == df['Low'].rolling(order*2+1, center=True).min()
     
     df['Last_SH'] = df['High'].where(df['is_SH']).ffill()
     df['Last_SL'] = df['Low'].where(df['is_SL']).ffill()
@@ -51,10 +45,10 @@ def hitung_structure(df, order=6):
     
     return df
 
-# ================== MAIN ==================
+# ================== MAIN ANALISIS ==================
 if analisis and ticker_input:
     try:
-        with st.spinner("Mengambil data dari Yahoo Finance..."):
+        with st.spinner(f"Mengambil data {ticker_input}..."):
             df_raw = ambil_data(ticker_input, periode)
             df = hitung_structure(df_raw, swing_order)
             latest = df.iloc[-1]
@@ -77,65 +71,35 @@ if analisis and ticker_input:
             
             with col_a:
                 st.markdown("**🟢 ENTRY BELI**")
-                risk = latest['Close'] - latest['Last_SL']
-                reward = latest['Last_SH'] - latest['Close']
-                rr = reward / risk if risk > 0 else 0
-                
                 if trend == "🟢 BULLISH":
                     if latest['Close'] <= latest['Last_SL'] * 1.04:
-                        st.success(f"✅ **ENTRY BAGUS SEKARANG**\nDekat Higher Low")
+                        st.success("✅ **ENTRY BAGUS SEKARANG**\nHarga dekat Higher Low")
                     else:
-                        st.info("🟡 Tunggu pullback ke Higher Low")
+                        st.info("🟡 Tunggu pullback ke Higher Low untuk entry lebih baik")
                 else:
-                    st.warning("❌ Struktur Bearish → Hindari entry")
-                
-                st.caption(f"Risk: Rp {risk:,.0f} | RR ≈ 1:{rr:.1f}")
+                    st.warning("❌ Hindari entry baru (Struktur Bearish)")
             
             with col_b:
                 st.markdown("**🔴 EXIT / JUAL**")
                 if latest['CHoCH_Bearish']:
                     st.error("🚨 **JUAL / KELUAR SEKARANG**\nCHoCH Bearish terdeteksi!")
                 else:
-                    target = latest['Last_SH'] * 1.05
-                    st.success(f"✅ Hold\nTarget potensial: Rp {target:,.0f}")
-                
-                st.caption(f"Resistance: Rp {latest['Last_SH']:,.0f}")
+                    st.success("✅ Hold selama struktur masih Bullish")
             
             # Chart
             st.subheader(f"📈 Chart Market Structure - {ticker_input}")
             fig = go.Figure()
-            fig.add_trace(go.Candlestick(x=df.index, open=df.Open, high=df.High, 
-                                         low=df.Low, close=df.Close, name="Price"))
+            fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'],
+                                         low=df['Low'], close=df['Close'], name="Price"))
             
-            fig.add_trace(go.Scatter(x=df[df.is_SH].index, y=df[df.is_SH].High,
+            fig.add_trace(go.Scatter(x=df[df['is_SH']].index, y=df[df['is_SH']]['High'],
                                      mode='markers', marker=dict(color='red', size=11, symbol='triangle-down'), name='Swing High'))
-            fig.add_trace(go.Scatter(x=df[df.is_SL].index, y=df[df.is_SL].Low,
+            fig.add_trace(go.Scatter(x=df[df['is_SL']].index, y=df[df['is_SL']]['Low'],
                                      mode='markers', marker=dict(color='lime', size=11, symbol='triangle-up'), name='Swing Low'))
             
             fig.update_layout(height=700, template="plotly_dark", 
                               title=f"{ticker_input} - Market Structure ({periode})")
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Multi Emiten Comparison
-            if len(multi_tickers) > 1:
-                st.subheader("🔄 Perbandingan Multi Emiten")
-                comparison = []
-                for t in multi_tickers[:4]:  # maksimal 4
-                    try:
-                        d = ambil_data(t, "1y")
-                        d = hitung_structure(d, swing_order)
-                        latest_d = d.iloc[-1]
-                        trend_d = "BULLISH" if latest_d['Last_SH'] >= d['Last_SH'].shift(1).iloc[-1] else "BEARISH"
-                        comparison.append({
-                            "Emiten": t,
-                            "Harga": latest_d['Close'],
-                            "Struktur": trend_d,
-                            "Last HL": latest_d['Last_SL'],
-                            "Last HH": latest_d['Last_SH']
-                        })
-                    except:
-                        pass
-                st.dataframe(pd.DataFrame(comparison), use_container_width=True)
             
             # Tabel Ringkasan
             st.subheader("📋 Data 10 Hari Terakhir")
@@ -143,6 +107,6 @@ if analisis and ticker_input:
                         use_container_width=True)
             
     except Exception as e:
-        st.error(f"Terjadi kesalahan: {e}")
+        st.error(f"Terjadi kesalahan: {str(e)}")
 
-st.caption("Data dari Yahoo Finance • Market Structure adalah alat bantu teknikal • Selalu gunakan money management & riset sendiri")
+st.caption("Data dari Yahoo Finance • Market Structure adalah alat bantu teknikal • Selalu gunakan money management")
